@@ -64,13 +64,17 @@ class RL_Brain(object):
     def trainNetwork(self, epoch):
         if epoch % REPLAYCE_INTERVAL == 0:
             self.q_target.load_state_dict(self.q_eval.state_dict())
-            print('\ntarget_params_replaced\n')
+            print('target_params_replaced')
         current_states, q_target = self.getTrainData()
         self.optimizer.zero_grad()
         outputs = self.q_eval(current_states)
         loss = self.loss(outputs, q_target)
         loss.backward()
         self.optimizer.step()
+        self._save_model(epoch)
+        return loss
+
+    def _save_model(self, epoch):
         # save network every 1000 iteration
         if epoch % SAVE_INTERVAL == 0:
             torch.save({'epoch': epoch,
@@ -79,7 +83,6 @@ class RL_Brain(object):
                         'optimizer_state_dict': self.optimizer.state_dict(),
                         'loss': self.loss}, PATH)
             print('save network')
-        return loss
 
     def getTrainData(self):
         current_states, next_states, terminals, rewards, action_indexs = \
