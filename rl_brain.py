@@ -1,7 +1,6 @@
 import random
 from collections import deque
 
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -45,6 +44,9 @@ class RL_Brain(object):
         self.q_eval.apply(self.init_weights)
         self.q_target = DeepQNetwork(input, output)
         self.optimizer = torch.optim.Adam(self.q_eval.parameters(), lr=1e-6)
+        self.load_model()
+
+    def load_model(self):
         try:
             checkpoint = torch.load(PATH)
             self.q_eval.load_state_dict(checkpoint['q_eval_model_state_dict'])
@@ -110,22 +112,22 @@ class RL_Brain(object):
             rewards.append(batch_memory[i][2])
             terminals.append(batch_memory[i][4])
             action = batch_memory[i][1]
-            action_indexs.append(np.argmax(action))
+            _, action_index = torch.max(action, -1)
+            action_indexs.append(action_index)
         return current_states, next_states, terminals, rewards, action_indexs
 
     def getAction(self):
-        action = np.zeros(2)
-        q_eval = None
+        action = torch.zeros(2)
+        q_max = None
         if random.random() <= self.epsilon and self.isTrain:
             print("----------Random Action----------")
             action_index = random.randint(0, ACTIONS - 1)
             action[action_index] = 1
         else:
             q_eval = self.q_eval(self.current_state)[0]
-            q_eval = q_eval.detach().numpy()
-            action_index = np.argmax(q_eval)
+            q_max, action_index = torch.max(q_eval, -1)
             action[action_index] = 1
-        return action, q_eval
+        return action, q_max
 
     def setPerception(self, time_step, action, reward, observation, terminal):
         nextObservation = torch.cat(

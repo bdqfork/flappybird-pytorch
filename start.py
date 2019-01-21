@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 
 import cv2
@@ -25,7 +24,7 @@ def playFlappyBird():
     flappyBird = game.GameState()
     # Step 3: play game
     # Step 3.1: obtain init state
-    action0 = np.array([1, 0])  # do nothing
+    action0 = torch.IntTensor([1, 0])  # do nothing
     observation0, reward0, terminal = flappyBird.frame_step(action0)
     observation0 = cv2.cvtColor(cv2.resize(
         observation0, (80, 80)), cv2.COLOR_BGR2GRAY)
@@ -48,6 +47,7 @@ def playFlappyBird():
             score = 0
         loss = brain.setPerception(
             time_step, action, reward, nextObservation, terminal)
+        _, action = torch.max(action, -1)
         print_info(action, brain, loss, q_max, reward, time_step)
         time_step += 1
 
@@ -60,14 +60,14 @@ def print_info(action, brain, loss, q_max, reward, time_step):
     else:
         state = "train"
     if q_max is None:
-        print("TIMESTEP", time_step, "/ STATE", state,
-              "/ EPSILON", brain.epsilon, "/ ACTION", np.argmax(action),
-              "/ REWARD", reward)
+        print("TIMESTEP", time_step, " STATE", state,
+              " EPSILON", brain.epsilon, " ACTION", action,
+              " REWARD", reward)
     else:
-        print("TIMESTEP", time_step, "/ STATE", state,
-              "/ EPSILON", brain.epsilon, "/ ACTION", np.argmax(
-                  action), "/ REWARD", reward,
-              "/ Q_MAX %e" % np.max(q_max), "/ LOSS", loss)
+        print("TIMESTEP", time_step, " STATE", state,
+              " EPSILON", brain.epsilon, " ACTION", action,
+              " REWARD", reward,
+              " Q_MAX %e" % q_max, " LOSS", loss)
 
 
 def main():
