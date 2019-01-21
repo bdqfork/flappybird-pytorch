@@ -1,15 +1,20 @@
 import torch
-
+import utils
 import cv2
 import game.wrapped_flappy_bird as game
-import rl_brain
 from rl_brain import RL_Brain
 
-ISTRAIN = True
+IS_TRAIN = True
+OBSERVE = 1000
+# OBSERVE = 1000000
+EXPLORE = 2000000
+INITIAL_EPSILON = 0.1
+# INITIAL_EPSILON = 0
+FINAL_EPSILON = 0.0001
 
 
-# preprocess raw image to 80*80 gray image
 def preprocess(observation):
+    # preprocess raw image to 80*80 gray image
     observation = cv2.cvtColor(cv2.resize(
         observation, (80, 80)), cv2.COLOR_BGR2GRAY)
     ret, observation = cv2.threshold(observation, 1, 255, cv2.THRESH_BINARY)
@@ -17,57 +22,60 @@ def preprocess(observation):
 
 
 def playFlappyBird():
-    # Step 1: init BrainDQN
-    brain = RL_Brain()
-    brain.isTrain = ISTRAIN
-    # Step 2: init Flappy Bird Game
-    flappyBird = game.GameState()
-    # Step 3: play game
-    # Step 3.1: obtain init state
-    action0 = torch.IntTensor([1, 0])  # do nothing
-    observation0, reward0, terminal = flappyBird.frame_step(action0)
-    observation0 = cv2.cvtColor(cv2.resize(
-        observation0, (80, 80)), cv2.COLOR_BGR2GRAY)
-    ret, observation0 = cv2.threshold(observation0, 1, 255, cv2.THRESH_BINARY)
-    brain.setInitState(observation0)
-
-    # Step 3.2: run the game
+    brain, flappyBird = init()
     time_step = 0
     score = 0
     while True:
-        action, q_max = brain.getAction()
+        action, q_max = brain.choose_action(IS_TRAIN)
+
         nextObservation, reward, terminal = flappyBird.frame_step(action)
         nextObservation = preprocess(nextObservation)
         if reward == 1:
             score += 1
         elif reward == -1:
             print("game over score: %d" % score)
-            if not ISTRAIN:
+            if not IS_TRAIN:
                 exit()
             score = 0
-        loss = brain.setPerception(
-            time_step, action, reward, nextObservation, terminal)
+
+        brain.store_memeory(action, reward, nextObservation, terminal)
+
+        loss = train(time_step, brain)
+
         _, action = torch.max(action, -1)
-        print_info(action, brain, loss, q_max, reward, time_step)
+        print_info(action, brain.epsilon, loss, q_max, reward, time_step)
         time_step += 1
 
 
-def print_info(action, brain, loss, q_max, reward, time_step):
-    if time_step <= rl_brain.OBSERVE:
-        state = "observe"
-    elif rl_brain.OBSERVE < time_step <= rl_brain.OBSERVE + rl_brain.EXPLORE:
-        state = "explore"
+def init():
+    flappyBird = game.GameState()
+
+    init_action = torch.IntTensor([1, 0])
+    init_observation, _, _ = flappyBird.frame_step(init_action)
+
+    init_observation = preprocess(init_observation)
+    brain = RL_Brain(init_observation, INITIAL_EPSILON)
+    return brain, flappyBird
+
+
+def train(time_step, brain):
+    loss = None
+    if time_step > OBSERVE and IS_TRAIN:
+        loss = brain.train_network(time_step)
+    if brain.epsilon > FINAL_EPSILON and time_step > OBSERVE:
+        brain.epsilon -= (INITIAL_EPSILON - FINAL_EPSILON) / EXPLORE
+    return loss
+
+
+def print_info(action, epsilon, loss, q_max, reward, time_step):
+    if time_step <= OBSERVE:
+        utils.print_simple_info(time_step, epsilon, action, reward)
+    elif OBSERVE < time_step <= OBSERVE + EXPLORE:
+        utils.print_train_info(time_step, "explore", epsilon,
+                               action, reward, q_max, loss)
     else:
-        state = "train"
-    if q_max is None:
-        print("TIMESTEP", time_step, " STATE", state,
-              " EPSILON", brain.epsilon, " ACTION", action,
-              " REWARD", reward)
-    else:
-        print("TIMESTEP", time_step, " STATE", state,
-              " EPSILON", brain.epsilon, " ACTION", action,
-              " REWARD", reward,
-              " Q_MAX %e" % q_max, " LOSS", loss)
+        utils.print_train_info(time_step, "train", epsilon,
+                               action, reward, q_max, loss)
 
 
 def main():

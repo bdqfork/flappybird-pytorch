@@ -1,19 +1,14 @@
 import random
-from collections import deque
 
 import torch
 import torch.nn as nn
 
+from memory import Memory
 from network import DeepQNetwork
 
+CHANNEL = 4
 ACTIONS = 2
 GAMMA = 0.99
-OBSERVE = 1000
-# OBSERVE = 1000000
-EXPLORE = 2000000
-INITIAL_EPSILON = 0.1
-# INITIAL_EPSILON = 0
-FINAL_EPSILON = 0.0001
 REPLAY_MEMORY = 50000
 BATCH = 32
 # 神经网络参数替换间隔
@@ -23,13 +18,14 @@ PATH = 'saved_networks/dqn.pt'
 
 
 class RL_Brain(object):
-    def __init__(self):
-        self.isTrain = True
+    def __init__(self, init_memory, initial_epsilon):
         self.time_step = 0
-        self.current_state = None
-        self.memory = deque()
-        self.epsilon = INITIAL_EPSILON
+        self.memory = Memory(REPLAY_MEMORY)
+        self.epsilon = initial_epsilon
         self.build()
+        current_state = torch.stack(
+            (init_memory, init_memory, init_memory, init_memory), 0)
+        self.current_state = current_state.resize_((1, 4, 80, 80))
 
     def init_weights(self, model):
         if type(model) == nn.Conv2d and type(model) == nn.Linear:
@@ -38,15 +34,15 @@ class RL_Brain(object):
             model.bias.data.fill_(0.01)
 
     def build(self):
-        input = 4
+        input = CHANNEL
         output = ACTIONS
         self.q_eval = DeepQNetwork(input, output)
         self.q_eval.apply(self.init_weights)
         self.q_target = DeepQNetwork(input, output)
         self.optimizer = torch.optim.Adam(self.q_eval.parameters(), lr=1e-6)
-        self.load_model()
+        self._load_model()
 
-    def load_model(self):
+    def _load_model(self):
         try:
             checkpoint = torch.load(PATH)
             self.q_eval.load_state_dict(checkpoint['q_eval_model_state_dict'])
@@ -61,32 +57,26 @@ class RL_Brain(object):
             self.loss = nn.MSELoss()
             print("Could not find old network weights")
 
-    def trainNetwork(self, epoch):
+    def train_network(self, epoch):
         if epoch % REPLAYCE_INTERVAL == 0:
             self.q_target.load_state_dict(self.q_eval.state_dict())
             print('target_params_replaced')
-        current_states, q_target = self.getTrainData()
+
+        current_states, q_target = self._compute_value()
+
         self.optimizer.zero_grad()
         outputs = self.q_eval(current_states)
+
         loss = self.loss(outputs, q_target)
         loss.backward()
+
         self.optimizer.step()
         self._save_model(epoch)
         return loss
 
-    def _save_model(self, epoch):
-        # save network every 1000 iteration
-        if epoch % SAVE_INTERVAL == 0:
-            torch.save({'epoch': epoch,
-                        'q_eval_model_state_dict': self.q_eval.state_dict(),
-                        'q_target_model_state_dict': self.q_eval.state_dict(),
-                        'optimizer_state_dict': self.optimizer.state_dict(),
-                        'loss': self.loss}, PATH)
-            print('save network')
-
-    def getTrainData(self):
+    def _compute_value(self):
         current_states, next_states, terminals, rewards, action_indexs = \
-            self.getFeatrue()
+            self.memory.preprocess_memory(BATCH)
         q_eval_next = self.q_eval(next_states)
         q_target_next = self.q_target(next_states)
         q_eval = self.q_eval(current_states)
@@ -100,29 +90,20 @@ class RL_Brain(object):
                     GAMMA * q_target_next[i][max_act_next]
         return current_states, q_target
 
-    def getFeatrue(self):
-        batch_memory = random.sample(self.memory, BATCH)
-        current_states = torch.empty((BATCH, 4, 80, 80))
-        next_states = torch.empty((BATCH, 4, 80, 80))
-        terminals = []
-        rewards = []
-        action_indexs = []
-        for i in range(0, BATCH):
-            current_state = batch_memory[i][0]
-            current_states[i] = current_state
-            next_state = batch_memory[i][3]
-            next_states[i] = next_state
-            rewards.append(batch_memory[i][2])
-            terminals.append(batch_memory[i][4])
-            action = batch_memory[i][1]
-            _, action_index = torch.max(action, -1)
-            action_indexs.append(action_index)
-        return current_states, next_states, terminals, rewards, action_indexs
+    def _save_model(self, epoch):
+        # save network every 1000 iteration
+        if epoch % SAVE_INTERVAL == 0:
+            torch.save({'epoch': epoch,
+                        'q_eval_model_state_dict': self.q_eval.state_dict(),
+                        'q_target_model_state_dict': self.q_eval.state_dict(),
+                        'optimizer_state_dict': self.optimizer.state_dict(),
+                        'loss': self.loss}, PATH)
+            print('save network')
 
-    def getAction(self):
+    def choose_action(self, is_train):
         action = torch.zeros(2)
         q_max = None
-        if random.random() <= self.epsilon and self.isTrain:
+        if random.random() <= self.epsilon and is_train:
             print("----------Random Action----------")
             action_index = random.randint(0, ACTIONS - 1)
             action[action_index] = 1
@@ -132,24 +113,6 @@ class RL_Brain(object):
             action[action_index] = 1
         return action, q_max
 
-    def setPerception(self, time_step, action, reward, observation, terminal):
-        nextObservation = torch.cat(
-            (observation, self.current_state[:, :3, :, :]), 1)
-        self.memory.append((self.current_state, action,
-                            reward, nextObservation, terminal))
-        loss = None
-        if len(self.memory) > REPLAY_MEMORY:
-            self.memory.popleft()
-        if time_step > OBSERVE and self.isTrain:
-            loss = self.trainNetwork(time_step)
-        self.current_state = nextObservation
-        if self.epsilon > FINAL_EPSILON and time_step > OBSERVE:
-            self.epsilon -= (INITIAL_EPSILON - FINAL_EPSILON) / EXPLORE
-        return loss
-
-    def setInitState(self, observation):
-        observation = torch.from_numpy(
-            observation).type(torch.FloatTensor)
-        current_state = torch.stack(
-            (observation, observation, observation, observation), 0)
-        self.current_state = current_state.resize_((1, 4, 80, 80))
+    def store_memeory(self, action, reward, observation, terminal):
+        self.current_state = self.memory.store_transition(
+            self.current_state, action, reward, observation, terminal)
