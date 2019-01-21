@@ -31,10 +31,13 @@ class Memory(object):
         for i in range(0, batch):
             current_state = batch_memory[i][0]
             current_states[i] = current_state
+
             next_state = batch_memory[i][3]
             next_states[i] = next_state
+
             rewards.append(batch_memory[i][2])
             terminals.append(batch_memory[i][4])
+
             action = batch_memory[i][1]
             _, action_index = torch.max(action, -1)
             action_indexs.append(action_index)
