@@ -54,7 +54,7 @@ def init():
     init_observation, _, _ = flappyBird.frame_step(init_action)
 
     init_observation = preprocess(init_observation)
-    brain = RL_Brain(init_observation, INITIAL_EPSILON)
+    brain = RL_Brain(init_observation, INITIAL_EPSILON, TRAIN)
     return brain, flappyBird
 
 
