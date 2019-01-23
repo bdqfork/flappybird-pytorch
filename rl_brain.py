@@ -18,7 +18,8 @@ PATH = 'saved_networks/dqn.pt'
 
 
 class RL_Brain(object):
-    def __init__(self, init_memory, initial_epsilon):
+    def __init__(self, init_memory, initial_epsilon, train):
+        self.train = train
         self.time_step = 0
         self.memory = Memory(REPLAY_MEMORY)
         self.epsilon = initial_epsilon
@@ -50,8 +51,12 @@ class RL_Brain(object):
                 checkpoint['q_target_model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             self.loss = checkpoint['loss']
-            self.q_eval.train()
-            self.q_target.train()
+            if self.train:
+                self.q_eval.train()
+                self.q_target.train()
+            else:
+                self.q_eval.eval()
+                self.q_target.eval()
             print("Successfully loaded")
         except Exception:
             self.loss = nn.MSELoss()
@@ -100,10 +105,10 @@ class RL_Brain(object):
                         'loss': self.loss}, PATH)
             print('save network')
 
-    def choose_action(self, is_train):
+    def choose_action(self):
         action = torch.zeros(2)
         q_max = None
-        if random.random() <= self.epsilon and is_train:
+        if random.random() <= self.epsilon and self.train:
             print("----------Random Action----------")
             action_index = random.randint(0, ACTIONS - 1)
             action[action_index] = 1

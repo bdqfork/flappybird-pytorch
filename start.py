@@ -4,8 +4,8 @@ import cv2
 import game.wrapped_flappy_bird as game
 from rl_brain import RL_Brain
 
-IS_TRAIN = True
-OBSERVE = 1000
+TRAIN = True
+OBSERVE = 10000
 # OBSERVE = 1000000
 EXPLORE = 2000000
 INITIAL_EPSILON = 0.1
@@ -26,7 +26,7 @@ def playFlappyBird():
     time_step = 0
     score = 0
     while True:
-        action, q_max = brain.choose_action(IS_TRAIN)
+        action, q_max = brain.choose_action()
 
         nextObservation, reward, terminal = flappyBird.frame_step(action)
         nextObservation = preprocess(nextObservation)
@@ -34,7 +34,7 @@ def playFlappyBird():
             score += 1
         elif reward == -1:
             print("game over score: %d" % score)
-            if not IS_TRAIN:
+            if not TRAIN:
                 exit()
             score = 0
 
@@ -60,7 +60,7 @@ def init():
 
 def train(time_step, brain):
     loss = None
-    if time_step > OBSERVE and IS_TRAIN:
+    if time_step > OBSERVE and TRAIN:
         loss = brain.train_network(time_step)
     if brain.epsilon > FINAL_EPSILON and time_step > OBSERVE:
         brain.epsilon -= (INITIAL_EPSILON - FINAL_EPSILON) / EXPLORE
