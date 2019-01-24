@@ -22,5 +22,5 @@ class DeepQNetwork(nn.Module):
         outputs = torch.empty((x.size(0), 2))
         for i in range(0, x.size(0)):
             y = F.relu(self.linear(x[i]))
-            outputs[i] = F.relu(self.output(y))
+            outputs[i] = self.output(y)
         return outputs
