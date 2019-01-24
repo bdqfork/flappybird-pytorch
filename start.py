@@ -5,7 +5,7 @@ import game.wrapped_flappy_bird as game
 from rl_brain import RL_Brain
 
 TRAIN = True
-OBSERVE = 100
+OBSERVE = 10000
 # OBSERVE = 1000000
 EXPLORE = 2000000
 INITIAL_EPSILON = 0.1
