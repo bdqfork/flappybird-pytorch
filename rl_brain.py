@@ -31,7 +31,7 @@ class RL_Brain(object):
         self.current_state = current_state.resize_((1, 4, 80, 80))
 
     def init_weights(self, model):
-        if type(model) == nn.Conv2d and type(model) == nn.Linear:
+        if type(model) == nn.Conv2d or type(model) == nn.Linear:
             model.weight.data.normal_(0.0, 0.01)
         if type(model) == nn.Conv2d:
             model.bias.data.fill_(0.01)
@@ -40,29 +40,31 @@ class RL_Brain(object):
         input = CHANNEL
         output = ACTIONS
         self.q_eval = DeepQNetwork(input, output)
-        self.q_eval.apply(self.init_weights)
         self.q_target = DeepQNetwork(input, output)
         self._load_model()
-        self.q_eval = self.q_eval.to(device=self.device)
-        self.q_target = self.q_target.to(device=self.device)
         self.optimizer = torch.optim.Adam(self.q_eval.parameters(), lr=1e-6)
         self.loss = nn.MSELoss()
 
     def _load_model(self):
         try:
             checkpoint = torch.load(PATH)
+            self.epsilon = checkpoint['epsilon']
             self.q_eval.load_state_dict(checkpoint['q_eval_model_state_dict'])
             self.q_target.load_state_dict(
                 checkpoint['q_target_model_state_dict'])
-            self.epsilon = checkpoint['epsilon']
             if self.train:
                 self.q_eval.train()
                 self.q_target.train()
             else:
                 self.q_eval.eval()
                 self.q_target.eval()
+            self.q_eval = self.q_eval.to(device=self.device)
+            self.q_target = self.q_target.to(device=self.device)
             print("Successfully loaded")
         except Exception:
+            self.q_eval = self.q_eval.to(device=self.device)
+            self.q_target = self.q_target.to(device=self.device)
+            self.q_eval.apply(self.init_weights)
             print("Could not find old network weights")
 
     def train_network(self, epoch):
