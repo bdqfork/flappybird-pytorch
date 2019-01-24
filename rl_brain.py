@@ -19,6 +19,8 @@ PATH = 'saved_networks/dqn.pt'
 
 class RL_Brain(object):
     def __init__(self, init_memory, initial_epsilon, train):
+        self.device = torch.device(
+            'cuda:0' if torch.cuda.is_available() else 'cpu')
         self.train = train
         self.time_step = 0
         self.memory = Memory(REPLAY_MEMORY)
@@ -40,8 +42,11 @@ class RL_Brain(object):
         self.q_eval = DeepQNetwork(input, output)
         self.q_eval.apply(self.init_weights)
         self.q_target = DeepQNetwork(input, output)
-        self.optimizer = torch.optim.Adam(self.q_eval.parameters(), lr=1e-6)
         self._load_model()
+        self.q_eval = self.q_eval.to(device=self.device)
+        self.q_target = self.q_target.to(device=self.device)
+        self.optimizer = torch.optim.Adam(self.q_eval.parameters(), lr=1e-6)
+        self.loss = nn.MSELoss()
 
     def _load_model(self):
         try:
@@ -49,8 +54,7 @@ class RL_Brain(object):
             self.q_eval.load_state_dict(checkpoint['q_eval_model_state_dict'])
             self.q_target.load_state_dict(
                 checkpoint['q_target_model_state_dict'])
-            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            self.loss = checkpoint['loss']
+            self.epsilon = checkpoint['epsilon']
             if self.train:
                 self.q_eval.train()
                 self.q_target.train()
@@ -59,7 +63,6 @@ class RL_Brain(object):
                 self.q_target.eval()
             print("Successfully loaded")
         except Exception:
-            self.loss = nn.MSELoss()
             print("Could not find old network weights")
 
     def train_network(self, epoch):
@@ -82,6 +85,8 @@ class RL_Brain(object):
     def _compute_value(self):
         current_states, next_states, terminals, rewards, action_indexs = \
             self.memory.preprocess_memory(BATCH)
+        current_states = current_states.to(device=self.device)
+        next_states = next_states.to(device=self.device)
         q_eval_next = self.q_eval(next_states)
         q_target_next = self.q_target(next_states)
         q_eval = self.q_eval(current_states)
@@ -98,11 +103,10 @@ class RL_Brain(object):
     def _save_model(self, epoch):
         # save network every 1000 iteration
         if epoch % SAVE_INTERVAL == 0:
-            torch.save({'epoch': epoch,
+            torch.save({'epsilon': self.epsilon,
                         'q_eval_model_state_dict': self.q_eval.state_dict(),
-                        'q_target_model_state_dict': self.q_eval.state_dict(),
-                        'optimizer_state_dict': self.optimizer.state_dict(),
-                        'loss': self.loss}, PATH)
+                        'q_target_model_state_dict': self.q_eval.state_dict()},
+                       PATH)
             print('save network')
 
     def choose_action(self):
@@ -113,7 +117,7 @@ class RL_Brain(object):
             action_index = random.randint(0, ACTIONS - 1)
             action[action_index] = 1
         else:
-            q_eval = self.q_eval(self.current_state)[0]
+            q_eval = self.q_eval(self.current_state.to(device=self.device))[0]
             q_max, action_index = torch.max(q_eval, -1)
             action[action_index] = 1
         return action, q_max
